@@ -4,5 +4,8 @@
   "python.formatting.provider": "black",
   "python.analysis.extraPaths": [
     "client/python"
+  ],
+  "cursorpyright.analysis.extraPaths": [
+    "client/python"
   ]
 }

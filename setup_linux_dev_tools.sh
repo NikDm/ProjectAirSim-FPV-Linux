@@ -25,7 +25,7 @@ if [[ $(lsb_release -rs) == "18.04" ]]; then
     sudo apt-add-repository 'deb http://apt.llvm.org/bionic llvm-toolchain-bionic-11 main'
 fi
 
-if [[ $(lsb_release -rs) == "20.04" ]]; then
+if [[ $(lsb_release -rs) == "24.04" ]]; then
     sudo apt-get -y install software-properties-common
     # Add Ubuntu proposed main and universe repositories to get clang-13/libc++-13 on Ubuntu 20.04
     sudo apt-add-repository "deb http://archive.ubuntu.com/ubuntu/ focal-proposed main universe"
@@ -37,9 +37,9 @@ sudo apt-get -y install --no-install-recommends \
     rsync \
     make \
     cmake \
-    clang-13 \
-    libc++-13-dev \
-    libc++abi-13-dev \
+    clang-15 \
+    libc++-15-dev \
+    libc++abi-15-dev \
     ninja-build \
     libvulkan1 \
     vulkan-tools
