@@ -13,6 +13,8 @@ Note: Ardupilot controller also should be running for the Iris airframe
 """
 
 import asyncio
+import cv2
+import numpy as np
 
 from projectairsim import ProjectAirSimClient, Drone, World
 from projectairsim.utils import projectairsim_log
@@ -20,6 +22,7 @@ from projectairsim.image_utils import ImageDisplay
 
 # Import control classes from separate module
 from ardupilot_controls import ArduPilotController, KeyboardController, KEYBOARD_AVAILABLE
+from ball_tracker import BallTracker
 
 
 # Async main function to wrap async drone commands
@@ -29,6 +32,9 @@ async def main():
 
     # Initialize an ImageDisplay object to position up to 2 pop-up sub-windows
     image_display = ImageDisplay()
+    
+    # Initialize ball tracker
+    ball_tracker = BallTracker(buffer_size=64)
 
     try:
         # Connect to simulation environment
@@ -49,19 +55,56 @@ async def main():
             lambda _, chase: image_display.receive(chase, chase_cam_window),
         )
 
-        # Subscribe to the drone's sensors with a callback to receive the sensor data
-        rgb_name = "RGB-Image"
-        image_display.add_image(rgb_name, subwin_idx=0)
+        # Subscribe to the FPV camera sensor's RGB images for ball tracking
+        fpv_name = "FpvCamera"
+        mask_name = "BallMask"
+        image_display.add_image(fpv_name, subwin_idx=0)
+        image_display.add_image(mask_name, subwin_idx=1)
+        
+        def process_fpv_frame(_, rgb):
+            """Process FPV camera frame for ball tracking."""
+            
+            # Convert the image data to OpenCV format
+            if rgb is not None and "data" in rgb and len(rgb["data"]) > 0:
+               
+                # Convert to numpy array and reshape
+                frame = np.frombuffer(rgb["data"], dtype=np.uint8)
+                frame = frame.reshape((rgb["height"], rgb["width"], 3))
+                frame = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
+                
+                # Process frame for ball tracking
+                processed_frame, ball_center, mask = ball_tracker.process_frame(frame)
+                
+                if processed_frame is not None:
+                    # Convert back to RGB for display
+                    processed_frame = cv2.cvtColor(processed_frame, cv2.COLOR_BGR2RGB)
+                    # Create a new image dict with processed data, preserving original structure
+                    processed_rgb = rgb.copy()  # Copy all original fields
+                    processed_rgb["data"] = processed_frame.tobytes()
+                    processed_rgb["width"] = processed_frame.shape[1]
+                    processed_rgb["height"] = processed_frame.shape[0]
+                    # Ensure encoding field exists (defaults to RGB for 3-channel images)
+                    if "encoding" not in processed_rgb:
+                        processed_rgb["encoding"] = "RGB8"
+                    image_display.receive(processed_rgb, fpv_name)
+                
+                # Display the mask
+                if mask is not None:
+                    # Convert mask to 3-channel for display
+                    mask_display = cv2.cvtColor(mask, cv2.COLOR_GRAY2RGB)
+                    # Create mask image dict
+                    mask_rgb = rgb.copy()  # Copy all original fields
+                    mask_rgb["data"] = mask_display.tobytes()
+                    mask_rgb["width"] = mask_display.shape[1]
+                    mask_rgb["height"] = mask_display.shape[0]
+                    # Ensure encoding field exists
+                    if "encoding" not in mask_rgb:
+                        mask_rgb["encoding"] = "RGB8"
+                    image_display.receive(mask_rgb, mask_name)
+        
         client.subscribe(
-            drone.sensors["DownCamera"]["scene_camera"],
-            lambda _, rgb: image_display.receive(rgb, rgb_name),
-        )
-
-        depth_name = "Depth-Image"
-        image_display.add_image(depth_name, subwin_idx=2)
-        client.subscribe(
-            drone.sensors["DownCamera"]["depth_camera"],
-            lambda _, depth: image_display.receive(depth, depth_name),
+            drone.sensors["FpvCamera"]["scene_camera"],
+            process_fpv_frame,
         )
 
         image_display.start()
