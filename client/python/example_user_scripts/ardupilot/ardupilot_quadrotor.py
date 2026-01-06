@@ -22,7 +22,7 @@ from projectairsim.image_utils import ImageDisplay
 
 # Import control classes from separate module
 from ardupilot_controls import ArduPilotController, KeyboardController, KEYBOARD_AVAILABLE
-from ball_tracker import BallTracker
+from laser_tracker import LaserTracker
 
 
 # Async main function to wrap async drone commands
@@ -33,8 +33,8 @@ async def main():
     # Initialize an ImageDisplay object to position up to 2 pop-up sub-windows
     image_display = ImageDisplay()
     
-    # Initialize ball tracker
-    ball_tracker = BallTracker(buffer_size=64)
+    # Initialize laser tracker
+    laser_tracker = LaserTracker(buffer_size=64)
 
     try:
         # Connect to simulation environment
@@ -55,14 +55,14 @@ async def main():
             lambda _, chase: image_display.receive(chase, chase_cam_window),
         )
 
-        # Subscribe to the FPV camera sensor's RGB images for ball tracking
+        # Subscribe to the FPV camera sensor's RGB images for laser tracking
         fpv_name = "FpvCamera"
-        mask_name = "BallMask"
+        mask_name = "LaserMask"
         image_display.add_image(fpv_name, subwin_idx=0)
         image_display.add_image(mask_name, subwin_idx=1)
         
         def process_fpv_frame(_, rgb):
-            """Process FPV camera frame for ball tracking."""
+            """Process FPV camera frame for laser tracking."""
             
             # Convert the image data to OpenCV format
             if rgb is not None and "data" in rgb and len(rgb["data"]) > 0:
@@ -72,8 +72,8 @@ async def main():
                 frame = frame.reshape((rgb["height"], rgb["width"], 3))
                 frame = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
                 
-                # Process frame for ball tracking
-                processed_frame, ball_center, mask = ball_tracker.process_frame(frame)
+                # Process frame for laser tracking
+                processed_frame, laser_center, mask = laser_tracker.process_frame(frame)
                 
                 if processed_frame is not None:
                     # Convert back to RGB for display
