@@ -23,6 +23,7 @@ from projectairsim.image_utils import ImageDisplay
 # Import control classes from separate module
 from ardupilot_controls import ArduPilotController, KeyboardController, KEYBOARD_AVAILABLE
 from laser_tracker import LaserTracker
+from laser_steering import LaserSteeringController
 
 
 # Async main function to wrap async drone commands
@@ -124,6 +125,9 @@ async def main():
             # Initialize keyboard controller
             kb_controller = KeyboardController(ardu_controller)
             
+            # Initialize laser steering controller
+            laser_steering = LaserSteeringController(ardu_controller, laser_tracker)
+            
             # Set to STABILIZE mode (attitude control, no GPS needed)
             current_mode = 'STABILIZE'
             ardu_controller.set_mode(current_mode)
@@ -142,16 +146,47 @@ async def main():
                 is_armed = False
                 running = True
                 current_mode = 'STABILIZE'
+                laser_steering_active = False
                 
                 projectairsim_log().info("Keyboard control active. Use keys to control the drone.")
-                projectairsim_log().info("Press 'T' to arm/disarm, 'H' for help, 'ESC' or 'Q' to quit.")
+                projectairsim_log().info("Press 'T' to arm/disarm, 'F' to toggle laser steering, 'H' for help, 'ESC' to quit.")
                 
                 try:
                     # Main control loop - send commands at ~20Hz
                     while running:
-                
-                        # Send current control state
-                        kb_controller.update_control()
+                        
+                        # Get manual control state from keyboard controller
+                        manual_state = kb_controller.get_state()
+                        
+                        # Convert manual state to control inputs
+                        # Roll: -30° to +30° -> -1000 to +1000
+                        manual_roll = int((manual_state['roll'] / 30.0) * 1000)
+                        manual_roll = max(-1000, min(1000, manual_roll))
+                        
+                        # Pitch: -30° to +30° -> -1000 to +1000
+                        manual_pitch = int((manual_state['pitch'] / 30.0) * 1000)
+                        manual_pitch = max(-1000, min(1000, manual_pitch))
+                        
+                        # Yaw: normalize to -1000 to +1000
+                        manual_yaw = int((manual_state['yaw'] / 30.0) * 1000)
+                        manual_yaw = max(-1000, min(1000, manual_yaw))
+                        
+                        # Throttle: 0.0 to 1.0 -> 0 to 1000
+                        manual_throttle = int(manual_state['thrust'] * 1000)
+                        manual_throttle = max(0, min(1000, manual_throttle))
+                        
+                        # Apply laser steering if active (overrides manual control)
+                        roll, pitch, throttle, yaw = laser_steering.update(
+                            manual_roll, manual_pitch, manual_throttle, manual_yaw
+                        )
+                        
+                        # Send control command to ArduPilot
+                        ardu_controller.set_manual_control(
+                            pitch=pitch,
+                            roll=roll,
+                            throttle=throttle,
+                            yaw=yaw
+                        )
                         
                         # Check for commands from keyboard
                         command = kb_controller.get_command(timeout=0.05)
@@ -176,6 +211,15 @@ async def main():
                                 current_mode = 'STABILIZE'
                                 projectairsim_log().info("Switching to STABILIZE mode...")
                             ardu_controller.set_mode(current_mode)
+                        elif command == 'toggle_laser_steering':
+                            if laser_steering_active:
+                                laser_steering.stop()
+                                laser_steering_active = False
+                                projectairsim_log().info("Laser steering OFF - Manual control active")
+                            else:
+                                laser_steering.start()
+                                laser_steering_active = True
+                                projectairsim_log().info("Laser steering ON - Auto-tracking laser point")
                         elif command == 'quit':
                             running = False
                             break

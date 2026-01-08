@@ -230,6 +230,7 @@ class KeyboardController:
         print("  T       - Arm/Disarm")
         print("  L       - Land mode")
         print("  M       - Toggle STABILIZE/ALT_HOLD mode")
+        print("  F       - Toggle laser steering mode")
         print("  0-9     - Set thrust to 0.0-0.9")
         print("  R       - Reset all controls to neutral")
         print("  H       - Show this help")
@@ -336,7 +337,7 @@ class KeyboardController:
         try:
             key_name = self._get_key_name(key)
             # Debug output - uncomment to see all detected keys
-            print(f"DEBUG: Key detected - name: '{key_name}', type: {type(key)}")
+            # print(f"DEBUG: Key detected - name: '{key_name}', type: {type(key)}")
             
             # Handle the key
             self._handle_key(key_name)
@@ -390,7 +391,7 @@ class KeyboardController:
             self.listener = keyboard.Listener(
                 on_press=self._on_press,
                 on_release=self._on_release,
-                suppress=True  # Try to suppress, but may not work on all systems
+                suppress=False  # Don't suppress keys - allow normal keyboard behavior
             )
             self.listener.start()
             
@@ -468,6 +469,9 @@ class KeyboardController:
             elif key_name == 'm':  # Toggle mode
                 print("Toggling mode...")
                 self.command_queue.put('toggle_mode')
+            elif key_name == 'f':  # Toggle laser steering
+                print("Toggling laser steering...")
+                self.command_queue.put('toggle_laser_steering')
             elif key_name == 'h':  # Help
                 self.print_controls()
             elif key_name in ['0', '1', '2', '3', '4', '5', '6', '7', '8', '9']:
