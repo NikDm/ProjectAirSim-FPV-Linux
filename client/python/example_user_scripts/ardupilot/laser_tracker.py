@@ -19,7 +19,7 @@ from projectairsim.utils import projectairsim_log
 class LaserTracker:
     """Laser tracking class that processes camera frames for laser point detection."""
     
-    def __init__(self, buffer_size=64, min_radius=2):
+    def __init__(self, buffer_size=64, min_radius=1):
         # Define the lower and upper boundaries of the "green" laser point in HSV color space
         # Green detection ranges - adjusted for better small laser point detection
         self.green_lower = (35, 40, 40)   # Green hue range: 35-85, lower saturation/value for sensitivity

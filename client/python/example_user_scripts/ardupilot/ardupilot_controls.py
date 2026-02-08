@@ -231,6 +231,7 @@ class KeyboardController:
         print("  L       - Land mode")
         print("  M       - Toggle STABILIZE/ALT_HOLD mode")
         print("  F       - Toggle laser steering mode")
+        print("  G       - Reset drone to starting position")
         print("  0-9     - Set thrust to 0.0-0.9")
         print("  R       - Reset all controls to neutral")
         print("  H       - Show this help")
@@ -472,6 +473,9 @@ class KeyboardController:
             elif key_name == 'f':  # Toggle laser steering
                 print("Toggling laser steering...")
                 self.command_queue.put('toggle_laser_steering')
+            elif key_name == 'g':  # Reset to starting position
+                print("Resetting to starting position...")
+                self.command_queue.put('reset_position')
             elif key_name == 'h':  # Help
                 self.print_controls()
             elif key_name in ['0', '1', '2', '3', '4', '5', '6', '7', '8', '9']:
