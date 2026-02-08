@@ -18,6 +18,7 @@ import numpy as np
 import os
 import commentjson
 import math
+import signal
 
 from projectairsim import ProjectAirSimClient, Drone, World
 from projectairsim.utils import (
@@ -98,16 +99,35 @@ def get_starting_pose_from_scene_config(scene_config_name: str, drone_name: str 
         return None
 
 
+# Global flag for clean shutdown
+shutdown_requested = False
+
+def signal_handler(_sig, _frame):
+    """Handle Ctrl+C and other termination signals."""
+    global shutdown_requested
+    projectairsim_log().info("\nShutdown signal received. Cleaning up...")
+    shutdown_requested = True
+
 # Async main function to wrap async drone commands
 async def main():
+    global shutdown_requested
+
+    # Set up signal handlers
+    signal.signal(signal.SIGINT, signal_handler)
+    signal.signal(signal.SIGTERM, signal_handler)
+
     # Create a Project AirSim client
     client = ProjectAirSimClient()
 
     # Initialize an ImageDisplay object to position up to 2 pop-up sub-windows
     image_display = ImageDisplay()
-    
+
     # Initialize laser tracker
     laser_tracker = LaserTracker(buffer_size=64)
+
+    # Track resources for cleanup
+    ardu_controller = None
+    kb_controller = None
 
     try:
         # Connect to simulation environment
@@ -230,8 +250,8 @@ async def main():
                 
                 try:
                     # Main control loop - send commands at ~20Hz
-                    while running:
-                        
+                    while running and not shutdown_requested:
+
                         # Get manual control state from keyboard controller
                         manual_state = kb_controller.get_state()
                         
@@ -317,17 +337,26 @@ async def main():
                 except KeyboardInterrupt:
                     projectairsim_log().info("Interrupted by user")
                     running = False
+                    shutdown_requested = True
                 
                 # Cleanup
                 kb_controller.stop()
-                
+
+                # Send zero controls to stop any motion
+                projectairsim_log().info("Sending zero controls...")
+                ardu_controller.set_manual_control(pitch=0, roll=0, throttle=0, yaw=0)
+                await asyncio.sleep(0.2)
+
                 if is_armed:
                     projectairsim_log().info("Disarming before exit...")
                     ardu_controller.disarm()
-            
-            projectairsim_log().info("Control session ended. Waiting for user input...")
+                    await asyncio.sleep(0.5)
+
+            projectairsim_log().info("Control session ended.")
+            projectairsim_log().info("IMPORTANT: Stop ArduPilot SITL (Ctrl+C in SITL terminal) to prevent Unreal freezing")
+            projectairsim_log().info("Then press any key here to continue...")
             input("Press any key to stop seeing the drone's camera images...")
-            
+
             ardu_controller.disconnect()
 
         # ------------------------------------------------------------------------------
@@ -336,9 +365,45 @@ async def main():
         projectairsim_log().error(f"Exception occurred: {err}", exc_info=True)
 
     finally:
-        # Always disconnect from the simulation environment to allow next connection
-        client.disconnect()
-        image_display.stop()
+        # Always clean up resources
+        projectairsim_log().info("Cleaning up resources...")
+
+        # Stop keyboard controller
+        if kb_controller:
+            kb_controller.stop()
+
+        # Send zero controls and disconnect from ArduPilot
+        if ardu_controller:
+            try:
+                projectairsim_log().info("Sending zero controls to ArduPilot...")
+                ardu_controller.set_manual_control(pitch=0, roll=0, throttle=0, yaw=0)
+            except:
+                pass
+            try:
+                ardu_controller.disconnect()
+            except:
+                pass
+
+        # Disconnect from simulation
+        try:
+            client.disconnect()
+        except:
+            pass
+
+        # Stop image display
+        try:
+            image_display.stop()
+        except:
+            pass
+
+        projectairsim_log().info("\n" + "="*70)
+        projectairsim_log().info("CLEANUP COMPLETE")
+        projectairsim_log().info("="*70)
+        projectairsim_log().info("To prevent Unreal Engine from freezing:")
+        projectairsim_log().info("1. Stop ArduPilot SITL (press Ctrl+C in the SITL terminal)")
+        projectairsim_log().info("2. Wait a moment for SITL to fully shut down")
+        projectairsim_log().info("3. Then you can safely continue in Unreal Editor")
+        projectairsim_log().info("="*70)
 
 
 if __name__ == "__main__":

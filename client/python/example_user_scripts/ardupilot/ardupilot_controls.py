@@ -55,8 +55,18 @@ class ArduPilotController:
     def disconnect(self):
         """Close connection to ArduPilot."""
         if self.master:
+            # Send zero controls before disconnecting to stop any motion
+            try:
+                projectairsim_log().info("Sending zero controls before disconnect...")
+                self.set_manual_control(pitch=0, roll=0, throttle=0, yaw=0)
+                time.sleep(0.1)  # Give time for message to send
+            except Exception as e:
+                projectairsim_log().warning(f"Failed to send zero controls: {e}")
+
+            # Close the connection
             self.master.close()
             self.master = None
+            projectairsim_log().info("Disconnected from ArduPilot")
     
     def arm(self):
         """Arm the vehicle."""

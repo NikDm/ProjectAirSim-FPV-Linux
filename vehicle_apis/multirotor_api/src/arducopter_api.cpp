@@ -201,23 +201,41 @@ void ArduCopterApi::ReciveRotorsControls() {
   // Receive motor data
   RotorControlMessage pkt;
   int recv_ret = udp_socket_->recv(&pkt, sizeof(pkt), 100);
-  while (recv_ret != sizeof(pkt)) {
+
+  // Add retry limit to prevent infinite error spam when ArduPilot SITL is not running
+  const int max_retries = 3;
+  int retry_count = 0;
+  static bool error_logged = false;  // Only log error once to prevent spam
+
+  while (recv_ret != sizeof(pkt) && retry_count < max_retries) {
     if (recv_ret <= 0) {
-      GetLogger().LogError(
-          GetControllerName(),
-          "Error while receiving rotor control data - ErrorNo: %d", recv_ret);
+      // Only log error once, not on every retry
+      if (!error_logged) {
+        GetLogger().LogError(
+            GetControllerName(),
+            "Error while receiving rotor control data - ErrorNo: %d (ArduPilot SITL may not be running)", recv_ret);
+        error_logged = true;
+      }
     } else {
       AddStatusMessage(GetLogger().FormatMessage(
           "Received %d bytes instead of %zu bytes", recv_ret, sizeof(pkt)));
     }
 
+    retry_count++;
     recv_ret = udp_socket_->recv(&pkt, sizeof(pkt), 100);
   }
 
-  for (auto i = 0; i < k_ardu_copter_rotor_control_count_; ++i) {
-    control_outputs_[i] = pkt.pwm[i];
+  // If we successfully received data, reset the error flag
+  if (recv_ret == sizeof(pkt)) {
+    error_logged = false;
+
+    for (auto i = 0; i < k_ardu_copter_rotor_control_count_; ++i) {
+      control_outputs_[i] = pkt.pwm[i];
+    }
+    NormalizeRotorControls();
   }
-  NormalizeRotorControls();
+  // If we failed after retries, keep previous control values (don't update)
+
   // HandleLockStep();
 }
 
